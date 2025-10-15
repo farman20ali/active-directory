@@ -1,0 +1,8 @@
+xyz,Name,Extension,Department,Cell Number,Location,Status,Notes
+EMP101,Alice Johnson,2001,IT,+1234567891,New York,Active,New hire
+EMP102,Bob Smith,2002,HR,+1234567892,Boston,Active,Transferred from Sales
+EMP103,Carol Davis,2003,Sales,+1234567893,Chicago,Active,Senior sales rep
+EMP104,David Wilson,2004,IT,+1234567894,New York,Inactive,On leave
+EMP105,Eve Martinez,2005,Finance,+1234567895,Miami,Active,Accounting specialist
+EMP106,Frank Thompson,5190,Admin,,Active,New hire
+09332,Grace Lee,2007,Marketing,+1234567897,San Francisco,Active,Marketing lead
