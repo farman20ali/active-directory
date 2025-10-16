@@ -36,6 +36,7 @@ import time
 EXCEL_PATH = "employees.xlsx"
 EMP_SHEET = "Employees"
 DEPT_SHEET = "Departments"
+USERS_SHEET = "Users"  # New sheet for login credentials
 
 # Default columns for employees sheet
 EMP_COLUMNS = [
@@ -52,6 +53,79 @@ EMP_COLUMNS = [
 ]
 
 DEPT_COLUMNS = ["Dept ID", "Department Name", "Description"]
+USERS_COLUMNS = ["Username", "Password", "Role", "Full Name", "Created Date"]  # Roles: admin, viewer
+
+# --------------------------- Authentication Functions ---------------------------
+
+def init_default_users():
+    """Create default admin user if no users exist."""
+    return pd.DataFrame([
+        {
+            "Username": "admin",
+            "Password": "admin123",  # Change this in production!
+            "Role": "admin",
+            "Full Name": "System Administrator",
+            "Created Date": datetime.utcnow().isoformat()
+        },
+        {
+            "Username": "viewer",
+            "Password": "viewer123",
+            "Role": "viewer",
+            "Full Name": "Guest Viewer",
+            "Created Date": datetime.utcnow().isoformat()
+        }
+    ])
+
+
+def authenticate_user(username: str, password: str, df_users: pd.DataFrame):
+    """Authenticate user credentials."""
+    if df_users.empty:
+        return None
+    
+    user = df_users[
+        (df_users["Username"].str.lower() == username.lower()) & 
+        (df_users["Password"] == password)
+    ]
+    
+    if not user.empty:
+        return {
+            "username": user.iloc[0]["Username"],
+            "role": user.iloc[0]["Role"],
+            "full_name": user.iloc[0]["Full Name"]
+        }
+    return None
+
+
+def is_admin():
+    """Check if current user is admin."""
+    if 'user' not in st.session_state or st.session_state.user is None:
+        return False
+    return st.session_state.user.get('role') == 'admin'
+
+
+def is_logged_in():
+    """Check if user is logged in."""
+    return 'user' in st.session_state and st.session_state.user is not None
+
+
+def require_login():
+    """Decorator/helper to require login for certain operations."""
+    if not is_logged_in():
+        st.warning("🔒 Please login to access this feature")
+        return False
+    return True
+
+
+def require_admin():
+    """Decorator/helper to require admin role."""
+    if not is_logged_in():
+        st.warning("🔒 Please login to access this feature")
+        return False
+    if not is_admin():
+        st.error("⛔ Admin access required for this operation")
+        return False
+    return True
+
 
 # --------------------------- Utility Functions ---------------------------
 
@@ -61,7 +135,8 @@ def ensure_workbook(path: str):
         st.warning(f"Excel file not found — creating new workbook at {path}")
         df_emp = pd.DataFrame(columns=EMP_COLUMNS)
         df_dept = pd.DataFrame(columns=DEPT_COLUMNS)
-        write_workbook(path, df_emp, df_dept)
+        df_users = init_default_users()
+        write_workbook(path, df_emp, df_dept, df_users)
 
 
 def read_workbook(path: str):
@@ -109,12 +184,22 @@ def read_workbook(path: str):
     # Ensure Dept ID is consistent string type
     if not df_dept.empty:
         df_dept["Dept ID"] = df_dept["Dept ID"].astype(str)
+    
+    # Read or create Users sheet
+    df_users = xls.get(USERS_SHEET, None)
+    if df_users is None or df_users.empty:
+        df_users = init_default_users()
+    else:
+        # Normalize users columns
+        for c in USERS_COLUMNS:
+            if c not in df_users.columns:
+                df_users[c] = ""
 
-    return df_emp[EMP_COLUMNS].copy(), df_dept[DEPT_COLUMNS].copy()
+    return df_emp[EMP_COLUMNS].copy(), df_dept[DEPT_COLUMNS].copy(), df_users[USERS_COLUMNS].copy()
 
 
-def write_workbook(path: str, df_emp: pd.DataFrame, df_dept: pd.DataFrame):
-    """Write two sheets to an Excel workbook atomically."""
+def write_workbook(path: str, df_emp: pd.DataFrame, df_dept: pd.DataFrame, df_users: pd.DataFrame = None):
+    """Write three sheets to an Excel workbook atomically."""
     # Ensure consistent data types before writing
     df_emp_copy = df_emp.copy()
     df_dept_copy = df_dept.copy()
@@ -127,10 +212,21 @@ def write_workbook(path: str, df_emp: pd.DataFrame, df_dept: pd.DataFrame):
     if "Dept ID" in df_dept_copy.columns:
         df_dept_copy["Dept ID"] = df_dept_copy["Dept ID"].astype(str)
     
+    # If no users provided, try to read existing or create default
+    if df_users is None:
+        try:
+            existing_xls = pd.read_excel(path, sheet_name=None, engine="openpyxl")
+            df_users = existing_xls.get(USERS_SHEET, init_default_users())
+        except:
+            df_users = init_default_users()
+    
+    df_users_copy = df_users.copy()
+    
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
         df_emp_copy.to_excel(writer, sheet_name=EMP_SHEET, index=False)
         df_dept_copy.to_excel(writer, sheet_name=DEPT_SHEET, index=False)
+        df_users_copy.to_excel(writer, sheet_name=USERS_SHEET, index=False)
     tmp.close()
     os.replace(tmp.name, path)
 
@@ -229,12 +325,19 @@ st.markdown('<div class="main-header"><h1>🔐 Excel Active Directory Portal</h1
 # Ensure workbook exists
 ensure_workbook(EXCEL_PATH)
 
+# Initialize session state for authentication
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
+if 'show_login' not in st.session_state:
+    st.session_state.show_login = False
+
 # Initialize session state
-if 'df_emp' not in st.session_state or 'df_dept' not in st.session_state:
-    st.session_state.df_emp, st.session_state.df_dept = read_workbook(EXCEL_PATH)
-    # Save back if we added Row IDs
-    if not st.session_state.df_emp.empty:
-        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+if 'df_emp' not in st.session_state or 'df_dept' not in st.session_state or 'df_users' not in st.session_state:
+    st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users = read_workbook(EXCEL_PATH)
+    # Save back if we added Row IDs or created default users
+    if not st.session_state.df_emp.empty or not st.session_state.df_users.empty:
+        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
     
 if 'edit_mode' not in st.session_state:
     st.session_state.edit_mode = False
@@ -281,53 +384,116 @@ if 'dept_manage_actions' not in st.session_state:
 # Read data from session state
 df_emp = st.session_state.df_emp
 df_dept = st.session_state.df_dept
+df_users = st.session_state.df_users
+
+# --------------------------- Login UI ---------------------------
+st.sidebar.header("🔐 Authentication")
+
+if is_logged_in():
+    # Show logged in user info
+    user_info = st.session_state.user
+    st.sidebar.success(f"✅ Logged in as: **{user_info['full_name']}**")
+    st.sidebar.caption(f"Role: {user_info['role'].upper()}")
+    
+    if st.sidebar.button("🚪 Logout", width="stretch"):
+        st.session_state.user = None
+        st.session_state.show_login = False
+        st.success("✅ Logged out successfully")
+        st.rerun()
+else:
+    # Show login button or form
+    if not st.session_state.show_login:
+        st.sidebar.info("👁️ Viewing in **Guest Mode**\n\nLogin to add/edit/delete records")
+        if st.sidebar.button("🔑 Login", width="stretch"):
+            st.session_state.show_login = True
+            st.rerun()
+    else:
+        st.sidebar.markdown("**Enter Credentials:**")
+        with st.sidebar.form("login_form"):
+            username = st.text_input("Username", placeholder="admin")
+            password = st.text_input("Password", type="password", placeholder="Password")
+            col_login1, col_login2 = st.columns(2)
+            
+            with col_login1:
+                submit_login = st.form_submit_button("✅ Login", width="stretch")
+            with col_login2:
+                cancel_login = st.form_submit_button("❌ Cancel", width="stretch")
+            
+            if submit_login:
+                user = authenticate_user(username, password, df_users)
+                if user:
+                    st.session_state.user = user
+                    st.session_state.show_login = False
+                    st.success(f"✅ Welcome, {user['full_name']}!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid credentials")
+            
+            if cancel_login:
+                st.session_state.show_login = False
+                st.rerun()
+        
+        st.sidebar.caption("💡 Default credentials:\n- admin/admin123\n- viewer/viewer123")
+
+st.sidebar.markdown("---")
 
 # Sidebar: Controls
 st.sidebar.header("⚙️ Controls & Actions")
-if st.sidebar.button("🔄 Reload from Excel", width="stretch"):
-    st.session_state.df_emp, st.session_state.df_dept = read_workbook(EXCEL_PATH)
-    st.rerun()
 
-if st.sidebar.button("💾 Save to Excel", width="stretch"):
-    write_workbook(EXCEL_PATH, df_emp, df_dept)
-    st.sidebar.success("✅ Saved to Excel.")
-
-# Bulk operations
-st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚡ Bulk Actions")
-if st.sidebar.button("🔄 Activate All Inactive", width="stretch", help="Set all inactive users to active"):
-    inactive_count = len(st.session_state.df_emp[st.session_state.df_emp['Status'] == 'Inactive'])
-    if inactive_count > 0:
-        st.session_state.df_emp.loc[st.session_state.df_emp['Status'] == 'Inactive', 'Status'] = 'Active'
-        st.session_state.df_emp.loc[st.session_state.df_emp['Status'] == 'Active', 'Last Updated'] = datetime.utcnow().isoformat()
-        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
-        st.sidebar.success(f"✅ Activated {inactive_count} user(s)")
+# Reload button - available to all logged-in users
+if is_logged_in():
+    if st.sidebar.button("🔄 Reload from Excel", width="stretch"):
+        st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users = read_workbook(EXCEL_PATH)
         st.rerun()
-    else:
-        st.sidebar.info("No inactive users found")
 
-if st.sidebar.button("📧 Export User List (CSV)", width="stretch", help="Download complete user list"):
-    csv_data = st.session_state.df_emp.to_csv(index=False).encode('utf-8')
-    st.sidebar.download_button(
-        "⬇️ Download CSV",
-        csv_data,
-        file_name=f"user_list_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        width="stretch"
-    )
+    if st.sidebar.button("💾 Save to Excel", width="stretch"):
+        write_workbook(EXCEL_PATH, df_emp, df_dept, df_users)
+        st.sidebar.success("✅ Saved to Excel.")
+else:
+    st.sidebar.info("🔒 Login to access controls")
 
-if st.sidebar.button("📥 Bulk Upload Users", width="stretch", help="Import multiple users from Excel/CSV"):
-    st.session_state.show_bulk_upload = True
-    st.rerun()
+# Bulk operations - Admin only
+if is_admin():
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚡ Bulk Actions")
+    if st.sidebar.button("🔄 Activate All Inactive", width="stretch", help="Set all inactive users to active"):
+        inactive_count = len(st.session_state.df_emp[st.session_state.df_emp['Status'] == 'Inactive'])
+        if inactive_count > 0:
+            st.session_state.df_emp.loc[st.session_state.df_emp['Status'] == 'Inactive', 'Status'] = 'Active'
+            st.session_state.df_emp.loc[st.session_state.df_emp['Status'] == 'Active', 'Last Updated'] = datetime.utcnow().isoformat()
+            write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
+            st.sidebar.success(f"✅ Activated {inactive_count} user(s)")
+            st.rerun()
+        else:
+            st.sidebar.info("No inactive users found")
 
-st.sidebar.markdown("---")
-if st.sidebar.button("🔄 Sync Departments", width="stretch", help="Review and sync departments from employee records"):
-    st.session_state.show_dept_sync = True
-    st.rerun()
+    # Export is allowed for all logged-in users
+if is_logged_in():
+    if st.sidebar.button("📧 Export User List (CSV)", width="stretch", help="Download complete user list"):
+        csv_data = st.session_state.df_emp.to_csv(index=False).encode('utf-8')
+        st.sidebar.download_button(
+            "⬇️ Download CSV",
+            csv_data,
+            file_name=f"user_list_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            width="stretch"
+        )
 
-if st.sidebar.button("✏️ Manage Departments", width="stretch", help="View, rename, merge or delete existing departments"):
-    st.session_state.show_dept_manage = True
-    st.rerun()
+# Bulk upload - Admin only
+if is_admin():
+    if st.sidebar.button("📥 Bulk Upload Users", width="stretch", help="Import multiple users from Excel/CSV"):
+        st.session_state.show_bulk_upload = True
+        st.rerun()
+
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🔄 Sync Departments", width="stretch", help="Review and sync departments from employee records"):
+        st.session_state.show_dept_sync = True
+        st.rerun()
+
+    if st.sidebar.button("✏️ Manage Departments", width="stretch", help="View, rename, merge or delete existing departments"):
+        st.session_state.show_dept_manage = True
+        st.rerun()
 
 # Quick stats with styled metrics
 st.sidebar.markdown("---")
@@ -522,12 +688,15 @@ with col1:
             notes_text = str(row.get('Notes', ''))
             cols[8].write(notes_text[:15] + '...' if len(notes_text) > 15 else notes_text)
             
-            # Edit button
-            if cols[9].button("✏️", key=f"edit_{idx}_{display_idx}", help="Edit this employee"):
-                st.session_state.edit_mode = True
-                st.session_state.edit_id = row['Row ID']  # Use Row ID instead of Employee ID
-                st.session_state.scroll_to_edit = True
-                st.rerun()
+            # Edit button - Admin only
+            if is_admin():
+                if cols[9].button("✏️", key=f"edit_{idx}_{display_idx}", help="Edit this employee"):
+                    st.session_state.edit_mode = True
+                    st.session_state.edit_id = row['Row ID']  # Use Row ID instead of Employee ID
+                    st.session_state.scroll_to_edit = True
+                    st.rerun()
+            else:
+                cols[9].write("🔒")
             
             # Light separator
             st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
@@ -687,11 +856,15 @@ with col1:
                                     st.session_state.df_emp.at[idx, "Extension"] = str(extension).strip()
                                     st.session_state.df_emp.at[idx, "Department"] = str(department).strip() if department else ""
                                     st.session_state.df_emp.at[idx, "Cell Number"] = str(cell).strip() if cell and str(cell).strip() else ""
-                                    st.session_state.df_emp.at[idx, "Location"] = str(location).strip() if location and str(location).strip() else ""
+                                    # Fix FutureWarning: Handle NaN explicitly before assignment
+                                    location_val = "" if pd.isna(location) or not str(location).strip() or str(location).strip() == 'nan' else str(location).strip()
+                                    st.session_state.df_emp.at[idx, "Location"] = location_val
                                     st.session_state.df_emp.at[idx, "Status"] = str(status)
-                                    st.session_state.df_emp.at[idx, "Notes"] = str(notes).strip() if notes and str(notes).strip() else ""
+                                    # Fix FutureWarning: Handle NaN explicitly before assignment
+                                    notes_val = "" if pd.isna(notes) or not str(notes).strip() or str(notes).strip() == 'nan' else str(notes).strip()
+                                    st.session_state.df_emp.at[idx, "Notes"] = notes_val
                                     st.session_state.df_emp.at[idx, "Last Updated"] = datetime.utcnow().isoformat()
-                                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+                                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
                                     st.success("✅ Saved changes to employee and updated Excel.")
                                     # Clear edit mode BEFORE rerun
                                     st.session_state.edit_mode = False
@@ -707,11 +880,15 @@ with col1:
                                 st.session_state.df_emp.at[idx, "Extension"] = str(extension).strip()
                                 st.session_state.df_emp.at[idx, "Department"] = str(department).strip() if department else ""
                                 st.session_state.df_emp.at[idx, "Cell Number"] = str(cell).strip() if cell and str(cell).strip() else ""
-                                st.session_state.df_emp.at[idx, "Location"] = str(location).strip() if location and str(location).strip() else ""
+                                # Fix FutureWarning: Handle NaN explicitly before assignment
+                                location_val = "" if pd.isna(location) or not str(location).strip() or str(location).strip() == 'nan' else str(location).strip()
+                                st.session_state.df_emp.at[idx, "Location"] = location_val
                                 st.session_state.df_emp.at[idx, "Status"] = str(status)
-                                st.session_state.df_emp.at[idx, "Notes"] = str(notes).strip() if notes and str(notes).strip() else ""
+                                # Fix FutureWarning: Handle NaN explicitly before assignment
+                                notes_val = "" if pd.isna(notes) or not str(notes).strip() or str(notes).strip() == 'nan' else str(notes).strip()
+                                st.session_state.df_emp.at[idx, "Notes"] = notes_val
                                 st.session_state.df_emp.at[idx, "Last Updated"] = datetime.utcnow().isoformat()
-                                write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+                                write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
                                 st.success("✅ Saved changes to employee and updated Excel.")
                                 # Clear edit mode BEFORE rerun
                                 st.session_state.edit_mode = False
@@ -722,7 +899,7 @@ with col1:
                     if delete_btn:
                         idx = matched.index[0]
                         st.session_state.df_emp = st.session_state.df_emp.drop(index=idx).reset_index(drop=True)
-                        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+                        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
                         st.success("🗑️ Deleted employee and updated Excel.")
                         st.session_state.edit_mode = False
                         st.session_state.edit_id = None
@@ -734,42 +911,46 @@ with col1:
                         st.rerun()
         else:
             st.subheader("✏️ Edit / Delete Employee")
-            st.markdown("**Search by multiple criteria:**")
             
-            search_by = st.radio("Search by:", ["Employee ID", "Name", "Extension", "Cell Number"], horizontal=True)
-            
-            if search_by == "Employee ID":
-                search_value = st.text_input("Enter Employee ID (partial match)")
-                if search_value:
-                    matched = df_emp[df_emp["Employee ID"].astype(str).str.contains(search_value, case=False, na=False)]
-            elif search_by == "Name":
-                search_value = st.text_input("Enter Name (partial match)")
-                if search_value:
-                    matched = df_emp[df_emp["Name"].str.contains(search_value, case=False, na=False)]
-            elif search_by == "Extension":
-                search_value = st.text_input("Enter Extension (partial match)")
-                if search_value:
-                    matched = df_emp[df_emp["Extension"].astype(str).str.contains(search_value, case=False, na=False)]
-            else:  # Cell Number
-                search_value = st.text_input("Enter Cell Number (partial match)")
-                if search_value:
-                    matched = df_emp[df_emp["Cell Number"].astype(str).str.contains(search_value, case=False, na=False)]
-            
-            if 'search_value' in locals() and search_value:
-                if matched.empty:
-                    st.info("❌ No employee found with that criteria.")
-                else:
-                    st.success(f"✅ Found {len(matched)} employee(s)")
-                    for idx, row in matched.iterrows():
-                        col1_s, col2_s = st.columns([3, 1])
-                        with col1_s:
-                            st.write(f"**{row['Name']}** - ID: {row['Employee ID']} - Ext: {row['Extension']} - Status: {row['Status']}")
-                        with col2_s:
-                            if st.button(f"✏️ Edit", key=f"select_edit_{idx}"):
-                                st.session_state.edit_mode = True
-                                st.session_state.edit_id = row['Row ID']  # Use Row ID instead of Employee ID
-                                st.session_state.scroll_to_edit = True
-                                st.rerun()
+            if not is_admin():
+                st.info("🔒 Admin access required to edit/delete employees")
+            else:
+                st.markdown("**Search by multiple criteria:**")
+                
+                search_by = st.radio("Search by:", ["Employee ID", "Name", "Extension", "Cell Number"], horizontal=True)
+                
+                if search_by == "Employee ID":
+                    search_value = st.text_input("Enter Employee ID (partial match)")
+                    if search_value:
+                        matched = df_emp[df_emp["Employee ID"].astype(str).str.contains(search_value, case=False, na=False)]
+                elif search_by == "Name":
+                    search_value = st.text_input("Enter Name (partial match)")
+                    if search_value:
+                        matched = df_emp[df_emp["Name"].str.contains(search_value, case=False, na=False)]
+                elif search_by == "Extension":
+                    search_value = st.text_input("Enter Extension (partial match)")
+                    if search_value:
+                        matched = df_emp[df_emp["Extension"].astype(str).str.contains(search_value, case=False, na=False)]
+                else:  # Cell Number
+                    search_value = st.text_input("Enter Cell Number (partial match)")
+                    if search_value:
+                        matched = df_emp[df_emp["Cell Number"].astype(str).str.contains(search_value, case=False, na=False)]
+                
+                if 'search_value' in locals() and search_value:
+                    if matched.empty:
+                        st.info("❌ No employee found with that criteria.")
+                    else:
+                        st.success(f"✅ Found {len(matched)} employee(s)")
+                        for idx, row in matched.iterrows():
+                            col1_s, col2_s = st.columns([3, 1])
+                            with col1_s:
+                                st.write(f"**{row['Name']}** - ID: {row['Employee ID']} - Ext: {row['Extension']} - Status: {row['Status']}")
+                            with col2_s:
+                                if st.button(f"✏️ Edit", key=f"select_edit_{idx}"):
+                                    st.session_state.edit_mode = True
+                                    st.session_state.edit_id = row['Row ID']  # Use Row ID instead of Employee ID
+                                    st.session_state.scroll_to_edit = True
+                                    st.rerun()
     
     # View Departments section - collapsible with search
     st.markdown("---")
@@ -821,225 +1002,242 @@ with col1:
                                 st.write(f"... and {emp_count - 10} more employee(s)")
 
 with col2:
-    st.subheader("➕ Quick Add")
-    st.markdown("**Add New Employee**")
-    with st.form("add_emp_form", clear_on_submit=True):
-        new_empid = st.text_input("Employee ID", placeholder="EMP001 (Optional)")
-        new_name = st.text_input("Name *", placeholder="John Doe")
-        new_extension = st.text_input("Extension (4 digits) *", placeholder="1234")
-        new_department = st.selectbox("Department", options=[""] + dept_options)
-        new_cell = st.text_input("Cell Number", placeholder="+1234567890")
-        new_location = st.text_input("Location", placeholder="New York")
-        new_status = st.selectbox("Status", options=["Active", "Inactive"], index=0)
-        new_notes = st.text_area("Notes", placeholder="Additional information...")
-        submit_new = st.form_submit_button("➕ Add Employee", width="stretch")
-        
-        if submit_new:
-            if not new_name:
-                st.error("⚠️ Name is required!")
-            elif not new_extension:
-                st.error("⚠️ Extension is required!")
-            else:
-                eid = new_empid.strip() if new_empid.strip() else ""
-                
-                # Check if Employee ID already exists (only if provided)
-                if eid and eid in st.session_state.df_emp["Employee ID"].astype(str).values:
-                    st.error(f"⚠️ Employee ID '{eid}' already exists! Please use a different ID.")
+    # Quick Add - Admin Only
+    if is_admin():
+        st.subheader("➕ Quick Add")
+        st.markdown("**Add New Employee**")
+        with st.form("add_emp_form", clear_on_submit=True):
+            new_empid = st.text_input("Employee ID", placeholder="EMP001 (Optional)")
+            new_name = st.text_input("Name *", placeholder="John Doe")
+            new_extension = st.text_input("Extension (4 digits) *", placeholder="1234")
+            new_department = st.selectbox("Department", options=[""] + dept_options)
+            new_cell = st.text_input("Cell Number", placeholder="+1234567890")
+            new_location = st.text_input("Location", placeholder="New York")
+            new_status = st.selectbox("Status", options=["Active", "Inactive"], index=0)
+            new_notes = st.text_area("Notes", placeholder="Additional information...")
+            submit_new = st.form_submit_button("➕ Add Employee", width="stretch")
+            
+            if submit_new:
+                if not require_admin():
+                    pass
+                elif not new_name:
+                    st.error("⚠️ Name is required!")
+                elif not new_extension:
+                    st.error("⚠️ Extension is required!")
                 else:
-                    # Generate next Row ID
-                    row_id = next_row_id(st.session_state.df_emp)
+                    eid = new_empid.strip() if new_empid.strip() else ""
                     
-                    new_row = {
-                        "Row ID": row_id,
-                        "Employee ID": eid,
-                        "Name": new_name,
-                        "Extension": new_extension,
-                        "Department": new_department,
-                        "Cell Number": str(new_cell).strip() if new_cell and str(new_cell).strip() else "",
-                        "Location": str(new_location).strip() if new_location and str(new_location).strip() else "",
-                        "Status": new_status,
-                        "Notes": str(new_notes).strip() if new_notes and str(new_notes).strip() else "",
-                        "Last Updated": datetime.utcnow().isoformat()
-                    }
-                    st.session_state.df_emp = pd.concat([st.session_state.df_emp, pd.DataFrame([new_row])], ignore_index=True)
-                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
-                    st.success(f"✅ Added {new_name} with Employee ID {eid} (Row #{row_id}).")
-                    st.rerun()
+                    # Check if Employee ID already exists (only if provided)
+                    if eid and eid in st.session_state.df_emp["Employee ID"].astype(str).values:
+                        st.error(f"⚠️ Employee ID '{eid}' already exists! Please use a different ID.")
+                    else:
+                        # Generate next Row ID
+                        row_id = next_row_id(st.session_state.df_emp)
+                        
+                        new_row = {
+                            "Row ID": row_id,
+                            "Employee ID": eid,
+                            "Name": new_name,
+                            "Extension": new_extension,
+                            "Department": new_department,
+                            "Cell Number": str(new_cell).strip() if new_cell and str(new_cell).strip() else "",
+                            "Location": str(new_location).strip() if new_location and str(new_location).strip() else "",
+                            "Status": new_status,
+                            "Notes": str(new_notes).strip() if new_notes and str(new_notes).strip() else "",
+                            "Last Updated": datetime.utcnow().isoformat()
+                        }
+                        st.session_state.df_emp = pd.concat([st.session_state.df_emp, pd.DataFrame([new_row])], ignore_index=True)
+                        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
+                        st.success(f"✅ Added {new_name} with Employee ID {eid} (Row #{row_id}).")
+                        st.rerun()
 
-    st.markdown("---")
-    st.subheader("🏢 Add Department")
-    st.info("💡 Use 'Manage Departments' button in sidebar to view/edit/delete departments")
-    with st.form("add_dept_form", clear_on_submit=True):
-        dname = st.text_input("Department Name *", placeholder="IT Department")
-        ddesc = st.text_area("Description", placeholder="Information Technology Department")
-        add_dept_btn = st.form_submit_button("➕ Add Department", width="stretch")
-        if add_dept_btn:
-            if not dname.strip():
-                st.error("⚠️ Department name is required!")
-            elif dname.strip().lower() in st.session_state.df_dept["Department Name"].str.lower().values:
-                st.error(f"⚠️ Department '{dname.strip()}' already exists! Please use a different name.")
-            else:
-                did = next_dept_id(st.session_state.df_dept)
-                st.session_state.df_dept = pd.concat([st.session_state.df_dept, pd.DataFrame([{"Dept ID": did, "Department Name": dname.strip(), "Description": ddesc.strip()}])], ignore_index=True)
-                write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
-                st.success(f"✅ Added department '{dname.strip()}'")
+        st.markdown("---")
+        st.subheader("🏢 Add Department")
+        st.info("💡 Use 'Manage Departments' button in sidebar to view/edit/delete departments")
+        with st.form("add_dept_form", clear_on_submit=True):
+            dname = st.text_input("Department Name *", placeholder="IT Department")
+            ddesc = st.text_area("Description", placeholder="Information Technology Department")
+            add_dept_btn = st.form_submit_button("➕ Add Department", width="stretch")
+            if add_dept_btn:
+                if not require_admin():
+                    pass
+                elif not dname.strip():
+                    st.error("⚠️ Department name is required!")
+                elif dname.strip().lower() in st.session_state.df_dept["Department Name"].str.lower().values:
+                    st.error(f"⚠️ Department '{dname.strip()}' already exists! Please use a different name.")
+                else:
+                    did = next_dept_id(st.session_state.df_dept)
+                    st.session_state.df_dept = pd.concat([st.session_state.df_dept, pd.DataFrame([{"Dept ID": did, "Department Name": dname.strip(), "Description": ddesc.strip()}])], ignore_index=True)
+                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
+                    st.success(f"✅ Added department '{dname.strip()}'")
+                    st.rerun()
+    else:
+        st.info("🔒 **Login Required**\n\nAdministrator access needed to add employees and departments")
+        if not is_logged_in():
+            if st.button("🔑 Go to Login", key="quick_add_login"):
+                st.session_state.show_login = True
                 st.rerun()
 
     st.markdown("---")
     st.subheader("✏️ Edit / Delete Department")
-    st.markdown("**Search by name (partial match):**")
     
-    edit_dept_search = st.text_input("Enter Department Name (partial match)", key="dept_search_edit")
-    if edit_dept_search:
-        # Search by partial name match
-        matched_depts = df_dept[df_dept["Department Name"].str.contains(edit_dept_search, case=False, na=False)]
+    if not is_admin():
+        st.info("🔒 Admin access required to edit/delete departments")
+    else:
+        st.markdown("**Search by name (partial match):**")
         
-        if matched_depts.empty:
-            st.info("❌ No department found with that name.")
-        else:
-            st.success(f"✅ Found {len(matched_depts)} department(s)")
-            for idx, dept_row in matched_depts.iterrows():
-                col1_d, col2_d = st.columns([3, 1])
-                with col1_d:
-                    emp_count = len(df_emp[df_emp['Department'] == dept_row['Department Name']])
-                    st.write(f"**{dept_row['Department Name']}** - ID: {dept_row['Dept ID']} - Employees: {emp_count}")
-                with col2_d:
-                    if st.button(f"✏️ Edit", key=f"select_dept_edit_{idx}"):
-                        st.session_state.edit_dept_mode = True
-                        st.session_state.edit_dept_idx = idx
-                        st.rerun()
+        edit_dept_search = st.text_input("Enter Department Name (partial match)", key="dept_search_edit")
+        if edit_dept_search:
+            # Search by partial name match
+            matched_depts = df_dept[df_dept["Department Name"].str.contains(edit_dept_search, case=False, na=False)]
+            
+            if matched_depts.empty:
+                st.info("❌ No department found with that name.")
+            else:
+                st.success(f"✅ Found {len(matched_depts)} department(s)")
+                for idx, dept_row in matched_depts.iterrows():
+                    col1_d, col2_d = st.columns([3, 1])
+                    with col1_d:
+                        emp_count = len(df_emp[df_emp['Department'] == dept_row['Department Name']])
+                        st.write(f"**{dept_row['Department Name']}** - ID: {dept_row['Dept ID']} - Employees: {emp_count}")
+                    with col2_d:
+                        if st.button(f"✏️ Edit", key=f"select_dept_edit_{idx}"):
+                            st.session_state.edit_dept_mode = True
+                            st.session_state.edit_dept_idx = idx
+                            st.rerun()
     
-    # Show edit form if department selected
-    if 'edit_dept_mode' not in st.session_state:
-        st.session_state.edit_dept_mode = False
-        st.session_state.edit_dept_idx = None
-    
-    if st.session_state.edit_dept_mode and st.session_state.edit_dept_idx is not None:
-        idx = st.session_state.edit_dept_idx
-        if idx in df_dept.index:
-            row = df_dept.loc[idx]
-            old_dept_name = row['Department Name']
-            
-            st.markdown("---")
-            st.markdown('<div id="department-edit-form-anchor"></div>', unsafe_allow_html=True)
-            st.markdown(f"""
-            <div style='background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%); 
-                        padding: 12px; 
-                        border-radius: 8px; 
-                        margin: 15px 0;
-                        animation: highlight-pulse 1.5s ease-in-out;'>
-                <h4 style='color: white; margin: 0;'>✏️ Editing: {old_dept_name}</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # JavaScript to scroll department edit into view
-            st.markdown("""
-            <script>
-                (function() {
-                    function scrollToDeptForm() {
-                        const element = document.getElementById('department-edit-form-anchor');
-                        if (element) {
-                            element.scrollIntoView({behavior: 'smooth', block: 'start', inline: 'nearest'});
-                            setTimeout(function() {
-                                element.scrollIntoView({behavior: 'smooth', block: 'start'});
-                            }, 100);
-                        }
-                    }
-                    
-                    setTimeout(scrollToDeptForm, 100);
-                    setTimeout(scrollToDeptForm, 300);
-                    setTimeout(scrollToDeptForm, 500);
-                })();
-            </script>
-            """, unsafe_allow_html=True)
-            
-            with st.form("edit_dept_form", clear_on_submit=True):
-                dn = st.text_input("Department Name *", value=old_dept_name) 
-                dd = st.text_area("Description", value=row["Description"]) 
+        # Show edit form if department selected (still under admin check)
+        if 'edit_dept_mode' not in st.session_state:
+            st.session_state.edit_dept_mode = False
+            st.session_state.edit_dept_idx = None
+        
+        if st.session_state.edit_dept_mode and st.session_state.edit_dept_idx is not None:
+            idx = st.session_state.edit_dept_idx
+            if idx in df_dept.index:
+                row = df_dept.loc[idx]
+                old_dept_name = row['Department Name']
                 
-                col_d1, col_d2, col_d3 = st.columns(3)
-                with col_d1:
-                    save_dept = st.form_submit_button("💾 Save", width="stretch")
-                with col_d2:
-                    del_dept = st.form_submit_button("🗑️ Delete", width="stretch")
-                with col_d3:
-                    cancel_dept = st.form_submit_button("❌ Cancel", width="stretch")
+                st.markdown("---")
+                st.markdown('<div id="department-edit-form-anchor"></div>', unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style='background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%); 
+                            padding: 12px; 
+                            border-radius: 8px; 
+                            margin: 15px 0;
+                            animation: highlight-pulse 1.5s ease-in-out;'>
+                    <h4 style='color: white; margin: 0;'>✏️ Editing: {old_dept_name}</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # JavaScript to scroll department edit into view
+                st.markdown("""
+                <script>
+                    (function() {
+                        function scrollToDeptForm() {
+                            const element = document.getElementById('department-edit-form-anchor');
+                            if (element) {
+                                element.scrollIntoView({behavior: 'smooth', block: 'start', inline: 'nearest'});
+                                setTimeout(function() {
+                                    element.scrollIntoView({behavior: 'smooth', block: 'start'});
+                                }, 100);
+                            }
+                        }
+                        
+                        setTimeout(scrollToDeptForm, 100);
+                        setTimeout(scrollToDeptForm, 300);
+                        setTimeout(scrollToDeptForm, 500);
+                    })();
+                </script>
+                """, unsafe_allow_html=True)
+                
+                with st.form("edit_dept_form", clear_on_submit=True):
+                    dn = st.text_input("Department Name *", value=old_dept_name) 
+                    dd = st.text_area("Description", value=row["Description"]) 
                     
-                if save_dept:
-                    if not dn.strip():
-                        st.error("⚠️ Department name is required!")
-                    elif dn.strip().lower() != old_dept_name.lower() and dn.strip().lower() in df_dept["Department Name"].str.lower().values:
-                        st.error(f"⚠️ Department '{dn.strip()}' already exists!")
-                        st.info("💡 Use 'Manage Departments' in sidebar to merge departments, or choose a different name")
-                    else:
-                        # Explicitly convert to string to avoid dtype warnings
-                        st.session_state.df_dept.at[idx, "Department Name"] = str(dn.strip())
-                        st.session_state.df_dept.at[idx, "Description"] = str(dd.strip()) if dd.strip() else ""
+                    col_d1, col_d2, col_d3 = st.columns(3)
+                    with col_d1:
+                        save_dept = st.form_submit_button("💾 Save", width="stretch")
+                    with col_d2:
+                        del_dept = st.form_submit_button("🗑️ Delete", width="stretch")
+                    with col_d3:
+                        cancel_dept = st.form_submit_button("❌ Cancel", width="stretch")
                         
-                        # Update department name in all employee records
-                        if old_dept_name != dn.strip():
-                            st.session_state.df_emp.loc[st.session_state.df_emp["Department"] == old_dept_name, "Department"] = str(dn.strip())
-                            st.info(f"📝 Updated department name from '{old_dept_name}' to '{dn.strip()}' in all employee records.")
+                    if save_dept:
+                        if not dn.strip():
+                            st.error("⚠️ Department name is required!")
+                        elif dn.strip().lower() != old_dept_name.lower() and dn.strip().lower() in df_dept["Department Name"].str.lower().values:
+                            st.error(f"⚠️ Department '{dn.strip()}' already exists!")
+                            st.info("💡 Use 'Manage Departments' in sidebar to merge departments, or choose a different name")
+                        else:
+                            # Explicitly convert to string to avoid dtype warnings
+                            st.session_state.df_dept.at[idx, "Department Name"] = str(dn.strip())
+                            st.session_state.df_dept.at[idx, "Description"] = str(dd.strip()) if dd.strip() else ""
+                            
+                            # Update department name in all employee records
+                            if old_dept_name != dn.strip():
+                                st.session_state.df_emp.loc[st.session_state.df_emp["Department"] == old_dept_name, "Department"] = str(dn.strip())
+                                st.info(f"📝 Updated department name from '{old_dept_name}' to '{dn.strip()}' in all employee records.")
+                            
+                            write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
+                            st.success("✅ Department updated.")
+                            # Clear edit mode BEFORE rerun
+                            st.session_state.edit_dept_mode = False
+                            st.session_state.edit_dept_idx = None
+                            time.sleep(0.5)  # Brief pause to show success message
+                            st.rerun()
                         
-                        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
-                        st.success("✅ Department updated.")
-                        # Clear edit mode BEFORE rerun
+                    if del_dept:
+                        dept_name = st.session_state.df_dept.at[idx, "Department Name"]
+                        emp_count = len(st.session_state.df_emp[st.session_state.df_emp["Department"] == dept_name])
+                        
+                        if emp_count > 0:
+                            st.warning(f"⚠️ This department has {emp_count} employee(s). They will be unassigned.")
+                        
+                        st.session_state.df_dept = st.session_state.df_dept.drop(index=idx).reset_index(drop=True)
+                        # Remove department from employees (set to blank)
+                        st.session_state.df_emp.loc[st.session_state.df_emp["Department"] == dept_name, "Department"] = ""
+                        write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
+                        st.success("🗑️ Deleted department and cleared assignments in employees.")
                         st.session_state.edit_dept_mode = False
                         st.session_state.edit_dept_idx = None
-                        time.sleep(0.5)  # Brief pause to show success message
                         st.rerun()
                     
-                if del_dept:
-                    dept_name = st.session_state.df_dept.at[idx, "Department Name"]
-                    emp_count = len(st.session_state.df_emp[st.session_state.df_emp["Department"] == dept_name])
-                    
-                    if emp_count > 0:
-                        st.warning(f"⚠️ This department has {emp_count} employee(s). They will be unassigned.")
-                    
-                    st.session_state.df_dept = st.session_state.df_dept.drop(index=idx).reset_index(drop=True)
-                    # Remove department from employees (set to blank)
-                    st.session_state.df_emp.loc[st.session_state.df_emp["Department"] == dept_name, "Department"] = ""
-                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
-                    st.success("🗑️ Deleted department and cleared assignments in employees.")
-                    st.session_state.edit_dept_mode = False
-                    st.session_state.edit_dept_idx = None
-                    st.rerun()
-                
-                if cancel_dept:
-                    st.session_state.edit_dept_mode = False
-                    st.session_state.edit_dept_idx = None
-                    st.rerun()
+                    if cancel_dept:
+                        st.session_state.edit_dept_mode = False
+                        st.session_state.edit_dept_idx = None
+                        st.rerun()
 
 st.markdown("---")
 st.markdown("---")
 
-# Footer section with better styling
-col_foot1, col_foot2, col_foot3 = st.columns(3)
-with col_foot1:
-    st.metric("📁 Data Source", "Excel Workbook")
-    st.caption(f"File: `{EXCEL_PATH}`")
-with col_foot2:
-    if os.path.exists(EXCEL_PATH):
-        mod_time = datetime.fromtimestamp(os.path.getmtime(EXCEL_PATH))
-        st.metric("🕐 Last Modified", mod_time.strftime("%Y-%m-%d %H:%M:%S"))
-    else:
-        st.metric("🕐 Last Modified", "N/A")
-with col_foot3:
-    file_size = os.path.getsize(EXCEL_PATH) if os.path.exists(EXCEL_PATH) else 0
-    st.metric("📊 File Size", f"{file_size / 1024:.2f} KB")
+# Footer section with better styling - Admin only
+if is_admin():
+    col_foot1, col_foot2, col_foot3 = st.columns(3)
+    with col_foot1:
+        st.metric("📁 Data Source", "Excel Workbook")
+        st.caption(f"File: `{EXCEL_PATH}`")
+    with col_foot2:
+        if os.path.exists(EXCEL_PATH):
+            mod_time = datetime.fromtimestamp(os.path.getmtime(EXCEL_PATH))
+            st.metric("🕐 Last Modified", mod_time.strftime("%Y-%m-%d %H:%M:%S"))
+        else:
+            st.metric("🕐 Last Modified", "N/A")
+    with col_foot3:
+        file_size = os.path.getsize(EXCEL_PATH) if os.path.exists(EXCEL_PATH) else 0
+        st.metric("📊 File Size", f"{file_size / 1024:.2f} KB")
 
-# Footer: show raw data and last saved time
-with st.expander("🔍 Raw Employees Data (for debugging)"):
-    # Convert to string types for display to avoid Arrow errors
-    df_emp_display = df_emp.copy()
-    df_emp_display = df_emp_display.astype(str)
-    st.dataframe(df_emp_display, width="stretch")
+    # Footer: show raw data and last saved time - Admin only
+    with st.expander("🔍 Raw Employees Data (for debugging)"):
+        # Convert to string types for display to avoid Arrow errors
+        df_emp_display = df_emp.copy()
+        df_emp_display = df_emp_display.astype(str)
+        st.dataframe(df_emp_display, width="stretch")
 
-with st.expander("🔍 Raw Departments Data (for debugging)"):
-    # Convert to string types for display to avoid Arrow errors
-    df_dept_display = df_dept.copy()
-    df_dept_display = df_dept_display.astype(str)
-    st.dataframe(df_dept_display, width="stretch")
+    with st.expander("🔍 Raw Departments Data (for debugging)"):
+        # Convert to string types for display to avoid Arrow errors
+        df_dept_display = df_dept.copy()
+        df_dept_display = df_dept_display.astype(str)
+        st.dataframe(df_dept_display, width="stretch")
 
 st.markdown("---")
 
@@ -1488,7 +1686,7 @@ if st.session_state.show_bulk_upload:
                                         replaced_count += 1
                             
                             # Save to Excel
-                            write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+                            write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
                             
                             # Show success message with details
                             success_msg = f"🎉 Successfully imported {imported_count} new records and updated {replaced_count} existing records!"
@@ -1832,7 +2030,7 @@ if st.session_state.show_dept_sync:
                             removed_count += len(st.session_state.df_emp[mask])
                     
                     # Save changes
-                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
                     
                     # Show success message
                     success_msg = "🎉 Sync completed!\n\n"
@@ -2145,7 +2343,7 @@ if st.session_state.show_dept_manage:
                             deleted_count += 1
                     
                     # Save changes
-                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept)
+                    write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
                     
                     # Show success message
                     success_msg = "🎉 Department management completed!\n\n"
@@ -2208,19 +2406,21 @@ with st.expander("📊 Advanced Analytics & Reports"):
             st.metric("4-Digit Extensions", len(ext_4digit))
             st.metric("Total Extensions", len(df_emp[df_emp['Extension'] != '']))
 
-with st.expander("🔍 Audit Log (Last 10 Updates)"):
-    if not df_emp.empty and 'Last Updated' in df_emp.columns:
-        recent = df_emp[df_emp['Last Updated'] != ''].sort_values('Last Updated', ascending=False).head(10)
-        if not recent.empty:
-            audit_display = recent[['Row ID', 'Name', 'Employee ID', 'Department', 'Status', 'Last Updated']].copy()
-            # Convert to display-friendly format
-            for col in audit_display.columns:
-                audit_display[col] = audit_display[col].astype(str)
-            st.dataframe(audit_display, hide_index=True, width="stretch")
+# Audit Log - Admin only
+if is_admin():
+    with st.expander("🔍 Audit Log (Last 10 Updates)"):
+        if not df_emp.empty and 'Last Updated' in df_emp.columns:
+            recent = df_emp[df_emp['Last Updated'] != ''].sort_values('Last Updated', ascending=False).head(10)
+            if not recent.empty:
+                audit_display = recent[['Row ID', 'Name', 'Employee ID', 'Department', 'Status', 'Last Updated']].copy()
+                # Convert to display-friendly format
+                for col in audit_display.columns:
+                    audit_display[col] = audit_display[col].astype(str)
+                st.dataframe(audit_display, hide_index=True, width="stretch")
+            else:
+                st.info("No audit trail available yet")
         else:
             st.info("No audit trail available yet")
-    else:
-        st.info("No audit trail available yet")
 
 st.markdown("---")
 st.markdown("""
