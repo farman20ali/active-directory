@@ -28,6 +28,7 @@ import streamlit as st
 import pandas as pd
 import os
 import tempfile
+import shutil
 from datetime import datetime
 from io import BytesIO
 import time
@@ -222,13 +223,22 @@ def write_workbook(path: str, df_emp: pd.DataFrame, df_dept: pd.DataFrame, df_us
     
     df_users_copy = df_users.copy()
     
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
-        df_emp_copy.to_excel(writer, sheet_name=EMP_SHEET, index=False)
-        df_dept_copy.to_excel(writer, sheet_name=DEPT_SHEET, index=False)
-        df_users_copy.to_excel(writer, sheet_name=USERS_SHEET, index=False)
-    tmp.close()
-    os.replace(tmp.name, path)
+    # Create temp file in the same directory as target to avoid cross-device issues
+    target_dir = os.path.dirname(os.path.abspath(path))
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", dir=target_dir)
+    try:
+        with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
+            df_emp_copy.to_excel(writer, sheet_name=EMP_SHEET, index=False)
+            df_dept_copy.to_excel(writer, sheet_name=DEPT_SHEET, index=False)
+            df_users_copy.to_excel(writer, sheet_name=USERS_SHEET, index=False)
+        tmp.close()
+        # Use shutil.move for cross-filesystem compatibility
+        shutil.move(tmp.name, path)
+    except Exception as e:
+        # Clean up temp file on error
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
+        raise e
 
 
 def next_row_id(df_emp: pd.DataFrame):
@@ -549,7 +559,7 @@ status_filter = st.sidebar.selectbox("Status", options=["Any", "Active", "Inacti
 # Department filter with multiselect
 # Re-read Departments from the saved workbook to ensure options reflect persisted data only
 try:
-    _wl_emp, _wl_dept = read_workbook(EXCEL_PATH)
+    _wl_emp, _wl_dept, _wl_users = read_workbook(EXCEL_PATH)
     persisted_dept_names = _wl_dept["Department Name"].dropna().astype(str).str.strip().unique().tolist()
 except Exception:
     persisted_dept_names = df_dept["Department Name"].dropna().astype(str).str.strip().unique().tolist()
@@ -1781,7 +1791,7 @@ if st.session_state.show_dept_sync:
     
     # Find departments in employees that don't exist in departments table
     # Always read from the persisted workbook to get true state
-    _sync_emp, _sync_dept = read_workbook(EXCEL_PATH)
+    _sync_emp, _sync_dept,_sync_users = read_workbook(EXCEL_PATH)
     
     emp_depts = set(_sync_emp["Department"].dropna().astype(str).str.strip().values)
     emp_depts = {d for d in emp_depts if d and d != 'nan' and d != ''}
@@ -2103,7 +2113,7 @@ if st.session_state.show_dept_manage:
     """, unsafe_allow_html=True)
     
     # Read current departments from persisted file
-    _manage_emp, _manage_dept = read_workbook(EXCEL_PATH)
+    _manage_emp, _manage_dept, _manage_users = read_workbook(EXCEL_PATH)
     
     if len(_manage_dept) == 0:
         st.info("No departments found in the department list")

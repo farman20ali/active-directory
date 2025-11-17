@@ -1,0 +1,28 @@
+[Unit]
+Description=Active Directory Portal - Streamlit Application
+After=network.target
+Documentation=https://github.com/streamlit/streamlit
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/path/to/active-directory
+Environment="PATH=/home/YOUR_USERNAME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/YOUR_USERNAME/.local/bin/streamlit run streamlit_ad_portal_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+Restart=always
+RestartSec=10
+StandardOutput=append:/path/to/active-directory/streamlit.log
+StandardError=append:/path/to/active-directory/streamlit.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=4096
+MemoryLimit=512M
+
+[Install]
+WantedBy=multi-user.target

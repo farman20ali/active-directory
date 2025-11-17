@@ -1,0 +1,123 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  AD PORTAL - QUICK COMMAND REFERENCE                       ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║                                                                            ║
+║  🌐 ACCESS                                                                 ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Local:     http://localhost:8501                                         ║
+║  Network:   http://10.90.19.195:8501                                      ║
+║                                                                            ║
+║  🔐 DEFAULT CREDENTIALS (CHANGE AFTER LOGIN!)                             ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Admin:     admin / admin123                                              ║
+║  Viewer:    viewer / viewer123                                            ║
+║                                                                            ║
+║  ⚡ MAKEFILE COMMANDS (RECOMMENDED)                                        ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Help:              make help                                             ║
+║  Install Deps:      make install                                          ║
+║  Deploy Service:    sudo make deploy                                      ║
+║  Start Service:     sudo make start                                       ║
+║  Stop Service:      sudo make stop                                        ║
+║  Restart Service:   sudo make restart                                     ║
+║  Check Status:      make status                                           ║
+║  View Logs:         make logs                                             ║
+║  Run Locally:       make run                                              ║
+║  Uninstall:         sudo make uninstall                                   ║
+║  Clean Files:       make clean                                            ║
+║                                                                            ║
+║  📋 SERVICE MANAGEMENT (ALTERNATIVE)                                       ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Check Status:      ./service-manager.sh status                           ║
+║  Start Service:     sudo ./service-manager.sh start                       ║
+║  Stop Service:      sudo ./service-manager.sh stop                        ║
+║  Restart Service:   sudo ./service-manager.sh restart                     ║
+║  View Live Logs:    sudo ./service-manager.sh logs                        ║
+║  View Last Logs:    ./service-manager.sh tail                             ║
+║                                                                            ║
+║  🔧 SYSTEMCTL COMMANDS (LOW-LEVEL)                                         ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  sudo systemctl status ad-portal                                          ║
+║  sudo systemctl start ad-portal                                           ║
+║  sudo systemctl stop ad-portal                                            ║
+║  sudo systemctl restart ad-portal                                         ║
+║  sudo systemctl enable ad-portal    (auto-start on boot)                 ║
+║  sudo systemctl disable ad-portal   (disable auto-start)                 ║
+║                                                                            ║
+║  📝 LOGS                                                                   ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Application:       tail -f streamlit.log                                 ║
+║  Service (live):    sudo journalctl -u ad-portal -f                       ║
+║  Service (last):    sudo journalctl -u ad-portal -n 50                    ║
+║  Service (today):   sudo journalctl -u ad-portal --since today            ║
+║                                                                            ║
+║  🔒 SECURITY                                                               ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Firewall:          sudo ufw allow 8501/tcp                               ║
+║  Check Port:        sudo netstat -tulpn | grep 8501                       ║
+║  Process Info:      ps aux | grep streamlit                               ║
+║                                                                            ║
+║  💾 BACKUP                                                                 ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Manual:  cp employees.xlsx backups/employees-$(date +%Y%m%d).xlsx       ║
+║  Restore: cp backups/employees-YYYYMMDD.xlsx employees.xlsx               ║
+║           sudo systemctl restart ad-portal                                ║
+║                                                                            ║
+║  🛠️ TROUBLESHOOTING                                                        ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Service won't start:                                                     ║
+║    sudo systemctl status ad-portal                                        ║
+║    sudo journalctl -u ad-portal -n 100                                    ║
+║                                                                            ║
+║  Port conflict:                                                           ║
+║    sudo lsof -i :8501                                                     ║
+║    sudo kill -9 <PID>                                                     ║
+║                                                                            ║
+║  Can't access from network:                                               ║
+║    sudo ufw allow 8501/tcp                                                ║
+║    sudo ufw reload                                                        ║
+║                                                                            ║
+║  📚 DOCUMENTATION                                                          ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  README.md                - Features and usage guide                      ║
+║  SERVICE_DEPLOYMENT.md    - Complete deployment guide                     ║
+║  DEPLOYMENT_SUCCESS.md    - Deployment status and summary                 ║
+║  ACCESS_CONTROL_UPDATE.md - Security and access control                   ║
+║                                                                            ║
+║  🎯 DEPLOYMENT STATUS                                                      ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Service:           ad-portal.service                                     ║
+║  Status:            🟢 Running                                            ║
+║  Auto-start:        ✅ Enabled                                            ║
+║  Memory:            49.8MB / 512MB limit                                  ║
+║  Uptime:            Since Oct 16 15:20:30                                 ║
+║                                                                            ║
+║  ⚡ QUICK ACTIONS                                                          ║
+║  ────────────────────────────────────────────────────────────────────     ║
+║  Restart after changes:    sudo ./service-manager.sh restart              ║
+║  Test manually:            streamlit run streamlit_ad_portal_app.py       ║
+║  Update app:               git pull && sudo systemctl restart ad-portal   ║
+║  Uninstall service:        sudo bash uninstall-service.sh                 ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+NOTES:
+------
+• Service runs as system user with 512MB memory limit
+• Auto-restarts on crash with 10-second delay
+• Logs are in: /active-directory/streamlit.log
+• Service will auto-start on system reboot
+• All management scripts are in: /active-directory/
+
+AFTER DEPLOYMENT:
+-----------------
+1. Change default passwords (edit employees.xlsx Users sheet)
+2. Import your employee data
+3. Set up automated backups (optional)
+4. Configure HTTPS/SSL (optional)
+5. Test reboot: sudo reboot
+
+SUPPORT:
+--------
+For detailed help, see SERVICE_DEPLOYMENT.md
+For troubleshooting, run: sudo journalctl -u ad-portal -n 50

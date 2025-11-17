@@ -1,1 +1,41 @@
-venv/*
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Streamlit
+.streamlit/
+streamlit.log
+
+# Excel files (data - keep sample files only)
+employees.xlsx
+employees-backup*.xlsx
+backups/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+tmp*
+temp*
+
+# Generated service file (will be auto-generated during deployment)
+ad-portal.service
+
+# Logs
+*.log
+logs/
