@@ -268,47 +268,421 @@ def next_dept_id(df_dept: pd.DataFrame):
 
 st.set_page_config(page_title="Excel Active Directory Portal", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for styling
+# Add viewport meta tag for better mobile responsiveness
+st.markdown("""
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+""", unsafe_allow_html=True)
+
+# Custom CSS for responsive styling
 st.markdown("""
 <style>
-    .main-header {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        padding: 1.2rem 2rem;
-        border-radius: 10px;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    /* ==================== ROOT VARIABLES ==================== */
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+        --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.15);
+        --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.2);
+        --border-radius: 12px;
+        --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    
+    /* ==================== MAIN LAYOUT ==================== */
+    .main .block-container {
+        padding: 1rem 1rem 2rem 1rem;
+        max-width: 100%;
+    }
+    
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding: 0.5rem 0.5rem 1rem 0.5rem;
+        }
+        
+        /* Hide sidebar by default on mobile */
+        section[data-testid="stSidebar"] {
+            width: 0 !important;
+            min-width: 0 !important;
+        }
+        
+        section[data-testid="stSidebar"][aria-expanded="true"] {
+            width: 85% !important;
+            min-width: 85% !important;
+        }
+    }
+    
+    /* ==================== HEADER ==================== */
+    .main-header {
+        background: var(--primary-gradient);
+        padding: 1.5rem;
+        border-radius: var(--border-radius);
+        margin-bottom: 1.5rem;
+        box-shadow: var(--shadow-md);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .main-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        animation: shine 10s linear infinite;
+    }
+    
+    @keyframes shine {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
     .main-header h1 {
         color: white;
         margin: 0;
-        font-size: 2.2rem;
+        font-size: 2rem;
+        font-weight: 700;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        position: relative;
+        z-index: 1;
     }
+    
     .main-header p {
-        color: rgba(255, 255, 255, 0.85);
-        margin: 0.3rem 0 0 0;
-        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.9);
+        margin: 0.5rem 0 0 0;
+        font-size: 0.9rem;
+        position: relative;
+        z-index: 1;
     }
+    
+    @media (max-width: 768px) {
+        .main-header {
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .main-header h1 {
+            font-size: 1.5rem;
+        }
+        
+        .main-header p {
+            font-size: 0.8rem;
+        }
+    }
+    
+    /* ==================== BUTTONS ==================== */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        transition: var(--transition);
+        border: none;
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0);
+    }
+    
+    @media (max-width: 768px) {
+        .stButton > button {
+            padding: 0.6rem 0.8rem;
+            font-size: 0.85rem;
+            width: 100%;
+        }
+    }
+    
+    /* ==================== FORMS & INPUTS ==================== */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > select {
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+        transition: var(--transition);
+        font-size: 0.9rem;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus,
+    .stSelectbox > div > div > select:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    @media (max-width: 768px) {
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stSelectbox > div > div > select {
+            font-size: 16px; /* Prevents zoom on iOS */
+            padding: 0.6rem;
+        }
+    }
+    
+    /* ==================== TABLES & DATAFRAMES ==================== */
+    div[data-testid="stDataFrame"] {
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #e0e0e0;
+    }
+    
+    /* Make tables horizontally scrollable on mobile */
+    div[data-testid="stDataFrame"] > div {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Table styling for better mobile experience */
+    div[data-testid="stDataFrame"] table {
+        min-width: 100%;
+        font-size: 0.9rem;
+    }
+    
+    @media (max-width: 768px) {
+        div[data-testid="stDataFrame"] table {
+            font-size: 0.75rem;
+        }
+        
+        div[data-testid="stDataFrame"] th,
+        div[data-testid="stDataFrame"] td {
+            padding: 0.4rem !important;
+            white-space: nowrap;
+        }
+    }
+    
+    /* ==================== METRICS & CARDS ==================== */
     .metric-card {
         background: white;
-        padding: 1.5rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 1.25rem;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-sm);
         border-left: 4px solid #667eea;
+        transition: var(--transition);
     }
-    .stButton>button {
-        border-radius: 5px;
-        font-weight: 500;
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
+    
+    .metric-card:hover {
+        box-shadow: var(--shadow-md);
         transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
-    div[data-testid="stDataFrame"] {
+    
+    @media (max-width: 768px) {
+        .metric-card {
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+    }
+    
+    /* Streamlit metric styling */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1rem;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-sm);
+    }
+    
+    @media (max-width: 768px) {
+        div[data-testid="stMetric"] {
+            padding: 0.75rem;
+        }
+        
+        div[data-testid="stMetric"] label {
+            font-size: 0.8rem !important;
+        }
+        
+        div[data-testid="stMetric"] > div {
+            font-size: 1.2rem !important;
+        }
+    }
+    
+    /* ==================== COLUMNS ==================== */
+    @media (max-width: 768px) {
+        /* Stack columns on mobile */
+        div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+    }
+    
+    /* ==================== EXPANDERS ==================== */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        font-weight: 500;
+        transition: var(--transition);
     }
+    
+    .streamlit-expanderHeader:hover {
+        background: linear-gradient(135deg, #e8eaf6 0%, #b3b9d1 100%);
+    }
+    
+    @media (max-width: 768px) {
+        .streamlit-expanderHeader {
+            font-size: 0.85rem;
+            padding: 0.75rem;
+        }
+    }
+    
+    /* ==================== CUSTOM EMPLOYEE CARDS ==================== */
+    .employee-card {
+        background: white;
+        border-radius: var(--border-radius);
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: var(--shadow-sm);
+        border-left: 4px solid #667eea;
+        transition: var(--transition);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .employee-card:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateX(5px);
+    }
+    
+    .employee-card.active {
+        border-left-color: #38ef7d;
+    }
+    
+    .employee-card.inactive {
+        border-left-color: #f5576c;
+        opacity: 0.8;
+    }
+    
+    @media (max-width: 768px) {
+        .employee-card {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+    }
+    
+    /* ==================== STATUS BADGES ==================== */
+    .status-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-badge.active {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        color: white;
+    }
+    
+    .status-badge.inactive {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+    }
+    
+    @media (max-width: 768px) {
+        .status-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+        }
+    }
+    
+    /* ==================== SEPARATORS ==================== */
+    hr {
+        margin: 1.5rem 0;
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, #e0e0e0 50%, transparent 100%);
+    }
+    
+    @media (max-width: 768px) {
+        hr {
+            margin: 1rem 0;
+        }
+    }
+    
+    /* ==================== ALERTS & NOTIFICATIONS ==================== */
+    .stAlert {
+        border-radius: var(--border-radius);
+        padding: 1rem;
+    }
+    
+    @media (max-width: 768px) {
+        .stAlert {
+            padding: 0.75rem;
+            font-size: 0.85rem;
+        }
+    }
+    
+    /* ==================== DOWNLOAD BUTTONS ==================== */
+    .stDownloadButton > button {
+        background: var(--success-gradient);
+        color: white;
+        border: none;
+    }
+    
+    .stDownloadButton > button:hover {
+        opacity: 0.9;
+    }
+    
+    /* ==================== SCROLLBAR STYLING ==================== */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    
+    @media (max-width: 768px) {
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+    }
+    
+    /* ==================== EDIT FORM ANIMATIONS ==================== */
+    @keyframes highlight-pulse {
+        0%, 100% { 
+            box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7); 
+        }
+        50% { 
+            box-shadow: 0 0 20px 10px rgba(102, 126, 234, 0.3); 
+        }
+    }
+    
+    .edit-form-container {
+        animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* ==================== LEGACY BUTTON STYLES ==================== */
     .edit-btn {
         background-color: #4CAF50;
         color: white;
@@ -318,6 +692,7 @@ st.markdown("""
         display: inline-block;
         font-size: 12px;
     }
+    
     .delete-btn {
         background-color: #f44336;
         color: white;
@@ -326,6 +701,122 @@ st.markdown("""
         text-decoration: none;
         display: inline-block;
         font-size: 12px;
+    }
+    
+    /* ==================== MOBILE NAVIGATION ==================== */
+    @media (max-width: 768px) {
+        /* Sidebar toggle button */
+        button[kind="header"] {
+            padding: 0.5rem !important;
+        }
+        
+        /* Make modals full screen on mobile */
+        .stModal {
+            max-width: 95% !important;
+        }
+    }
+    
+    /* ==================== LOADING STATES ==================== */
+    .stSpinner > div {
+        border-color: #667eea !important;
+    }
+    
+    /* ==================== FILE UPLOADER ==================== */
+    div[data-testid="stFileUploader"] {
+        border: 2px dashed #667eea;
+        border-radius: var(--border-radius);
+        padding: 1rem;
+        transition: var(--transition);
+    }
+    
+    div[data-testid="stFileUploader"]:hover {
+        border-color: #764ba2;
+        background: rgba(102, 126, 234, 0.05);
+    }
+    
+    @media (max-width: 768px) {
+        div[data-testid="stFileUploader"] {
+            padding: 0.75rem;
+        }
+    }
+    
+    /* ==================== RADIO BUTTONS ==================== */
+    @media (max-width: 768px) {
+        div[role="radiogroup"] {
+            flex-direction: column !important;
+            gap: 0.5rem !important;
+        }
+        
+        div[role="radiogroup"] label {
+            width: 100% !important;
+        }
+    }
+    
+    /* ==================== ACCESSIBILITY ==================== */
+    @media (prefers-reduced-motion: reduce) {
+        * {
+            animation: none !important;
+            transition: none !important;
+        }
+    }
+    
+    /* ==================== PRINT STYLES ==================== */
+    @media print {
+        .stButton,
+        section[data-testid="stSidebar"],
+        .stDownloadButton {
+            display: none !important;
+        }
+    }
+    
+    /* ==================== TYPOGRAPHY IMPROVEMENTS ==================== */
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-weight: 600;
+        line-height: 1.2;
+    }
+    
+    /* ==================== IMPROVED SPACING ==================== */
+    section.main > div {
+        padding-bottom: 2rem;
+    }
+    
+    /* ==================== FOCUS STATES FOR ACCESSIBILITY ==================== */
+    button:focus,
+    input:focus,
+    select:focus,
+    textarea:focus {
+        outline: 2px solid #667eea !important;
+        outline-offset: 2px;
+    }
+    
+    /* ==================== IMPROVED MOBILE TOUCH TARGETS ==================== */
+    @media (max-width: 768px) {
+        button,
+        a,
+        [role="button"] {
+            min-height: 44px; /* Minimum touch target size */
+            min-width: 44px;
+        }
+    }
+    
+    /* ==================== SKELETON LOADING ANIMATION ==================== */
+    @keyframes skeleton-loading {
+        0% {
+            background-position: -200px 0;
+        }
+        100% {
+            background-position: calc(200px + 100%) 0;
+        }
+    }
+    
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 0px, #f8f8f8 40px, #f0f0f0 80px);
+        background-size: 200px 100%;
+        animation: skeleton-loading 1.5s infinite;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -405,7 +896,7 @@ if is_logged_in():
     st.sidebar.success(f"✅ Logged in as: **{user_info['full_name']}**")
     st.sidebar.caption(f"Role: {user_info['role'].upper()}")
     
-    if st.sidebar.button("🚪 Logout", width="stretch"):
+    if st.sidebar.button("🚪 Logout", use_container_width=True):
         st.session_state.user = None
         st.session_state.show_login = False
         st.success("✅ Logged out successfully")
@@ -414,7 +905,7 @@ else:
     # Show login button or form
     if not st.session_state.show_login:
         st.sidebar.info("👁️ Viewing in **Guest Mode**\n\nLogin to add/edit/delete records")
-        if st.sidebar.button("🔑 Login", width="stretch"):
+        if st.sidebar.button("🔑 Login", use_container_width=True):
             st.session_state.show_login = True
             st.rerun()
     else:
@@ -425,9 +916,9 @@ else:
             col_login1, col_login2 = st.columns(2)
             
             with col_login1:
-                submit_login = st.form_submit_button("✅ Login", width="stretch")
+                submit_login = st.form_submit_button("✅ Login", use_container_width=True)
             with col_login2:
-                cancel_login = st.form_submit_button("❌ Cancel", width="stretch")
+                cancel_login = st.form_submit_button("❌ Cancel", use_container_width=True)
             
             if submit_login:
                 user = authenticate_user(username, password, df_users)
@@ -453,11 +944,11 @@ st.sidebar.header("⚙️ Controls & Actions")
 
 # Reload button - available to all logged-in users
 if is_logged_in():
-    if st.sidebar.button("🔄 Reload from Excel", width="stretch"):
+    if st.sidebar.button("🔄 Reload from Excel", use_container_width=True):
         st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users = read_workbook(EXCEL_PATH)
         st.rerun()
 
-    if st.sidebar.button("💾 Save to Excel", width="stretch"):
+    if st.sidebar.button("💾 Save to Excel", use_container_width=True):
         write_workbook(EXCEL_PATH, df_emp, df_dept, df_users)
         st.sidebar.success("✅ Saved to Excel.")
 else:
@@ -467,7 +958,7 @@ else:
 if is_admin():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚡ Bulk Actions")
-    if st.sidebar.button("🔄 Activate All Inactive", width="stretch", help="Set all inactive users to active"):
+    if st.sidebar.button("🔄 Activate All Inactive", use_container_width=True, help="Set all inactive users to active"):
         inactive_count = len(st.session_state.df_emp[st.session_state.df_emp['Status'] == 'Inactive'])
         if inactive_count > 0:
             st.session_state.df_emp.loc[st.session_state.df_emp['Status'] == 'Inactive', 'Status'] = 'Active'
@@ -480,28 +971,28 @@ if is_admin():
 
     # Export is allowed for all logged-in users
 if is_logged_in():
-    if st.sidebar.button("📧 Export User List (CSV)", width="stretch", help="Download complete user list"):
+    if st.sidebar.button("📧 Export User List (CSV)", use_container_width=True, help="Download complete user list"):
         csv_data = st.session_state.df_emp.to_csv(index=False).encode('utf-8')
         st.sidebar.download_button(
             "⬇️ Download CSV",
             csv_data,
             file_name=f"user_list_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv",
-            width="stretch"
+            use_container_width=True
         )
 
 # Bulk upload - Admin only
 if is_admin():
-    if st.sidebar.button("📥 Bulk Upload Users", width="stretch", help="Import multiple users from Excel/CSV"):
+    if st.sidebar.button("📥 Bulk Upload Users", use_container_width=True, help="Import multiple users from Excel/CSV"):
         st.session_state.show_bulk_upload = True
         st.rerun()
 
     st.sidebar.markdown("---")
-    if st.sidebar.button("🔄 Sync Departments", width="stretch", help="Review and sync departments from employee records"):
+    if st.sidebar.button("🔄 Sync Departments", use_container_width=True, help="Review and sync departments from employee records"):
         st.session_state.show_dept_sync = True
         st.rerun()
 
-    if st.sidebar.button("✏️ Manage Departments", width="stretch", help="View, rename, merge or delete existing departments"):
+    if st.sidebar.button("✏️ Manage Departments", use_container_width=True, help="View, rename, merge or delete existing departments"):
         st.session_state.show_dept_manage = True
         st.rerun()
 
@@ -525,7 +1016,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("🔍 Search & Filters")
 
 # Clear Filters button at the top
-if st.sidebar.button("🔄 Clear All Filters", width="stretch", help="Reset all search filters"):
+if st.sidebar.button("🔄 Clear All Filters", use_container_width=True, help="Reset all search filters"):
     # Clear by using unique keys that will reset
     if 'clear_filters_counter' not in st.session_state:
         st.session_state.clear_filters_counter = 0
@@ -566,6 +1057,48 @@ except Exception:
 
 dept_options = sorted([d for d in persisted_dept_names if d and d != 'nan'])
 selected_depts = st.sidebar.multiselect("Department", options=dept_options, key=f"dept_filter{filter_key_suffix}")
+
+# Dashboard Metrics - Responsive Card Layout
+st.markdown("""
+<div style='background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
+            padding: 1rem; 
+            border-radius: 12px; 
+            margin-bottom: 1.5rem; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+    <h3 style='margin: 0 0 0.5rem 0; color: #333; font-size: 1.1rem;'>📊 System Overview</h3>
+</div>
+""", unsafe_allow_html=True)
+
+metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+with metric_col1:
+    st.metric(
+        label="👥 Total Employees", 
+        value=total_users,
+        help="Total number of employees in the system"
+    )
+with metric_col2:
+    st.metric(
+        label="✅ Active Users", 
+        value=active_users,
+        delta=f"{(active_users/total_users*100):.1f}%" if total_users > 0 else "0%",
+        help="Currently active employees"
+    )
+with metric_col3:
+    st.metric(
+        label="⏸️ Inactive Users", 
+        value=inactive_users,
+        delta=f"{(inactive_users/total_users*100):.1f}%" if total_users > 0 else "0%",
+        delta_color="inverse",
+        help="Currently inactive employees"
+    )
+with metric_col4:
+    st.metric(
+        label="🏢 Departments", 
+        value=len(df_dept),
+        help="Total number of departments"
+    )
+
+st.markdown("---")
 
 # Main layout: two columns
 col1, col2 = st.columns([3, 1])
@@ -659,57 +1192,122 @@ with col1:
         end_idx = min(start_idx + rows_per_page, total_rows)
         df_page = df_view.iloc[start_idx:end_idx]
         
-        # Header row with styling
-        st.markdown("""
-        <div style='background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
-                    padding: 10px; 
-                    border-radius: 8px 8px 0 0; 
-                    color: white; 
-                    font-weight: bold;'>
-        </div>
-        """, unsafe_allow_html=True)
+        # Add view toggle (mobile-friendly card view vs table view)
+        view_mode = st.radio("📱 View Mode:", ["Cards (Mobile-Friendly)", "Table (Desktop)"], horizontal=True, key="view_mode", help="Cards view is optimized for mobile devices")
         
-        header_cols = st.columns([0.4, 0.8, 1.5, 1, 1.2, 0.8, 1.2, 0.8, 1, 0.6])
-        headers = ["Row", "Emp ID", "Name", "Extension", "Department", "Cell", "Location", "Status", "Notes", "Action"]
-        for col, header in zip(header_cols, headers):
-            col.markdown(f"**{header}**")
+        if view_mode == "Cards (Mobile-Friendly)":
+            # Card-based layout - much better for mobile
+            st.markdown(f"**📋 Showing {len(df_page)} of {len(df_view)} employee(s) | Page {st.session_state.page_number + 1}/{total_pages}**")
+            st.markdown("---")
+            
+            for display_idx, (idx, row) in enumerate(df_page.iterrows(), start=start_idx + 1):
+                status_class = "active" if row['Status'] == 'Active' else "inactive"
+                status_badge = f'<span class="status-badge {status_class}">{row["Status"]}</span>'
+                
+                emp_id_display = str(row.get('Employee ID', '')).strip()
+                emp_id_text = emp_id_display if emp_id_display and emp_id_display != 'nan' else 'No ID'
+                
+                # Create responsive card
+                st.markdown(f"""
+                <div class="employee-card {status_class}">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <h4 style="margin: 0; color: #667eea; font-size: 1.1rem;">👤 {row['Name']}</h4>
+                            <p style="margin: 0.25rem 0; color: #666; font-size: 0.85rem;">ID: {emp_id_text} | Row: {row.get('Row ID', display_idx)}</p>
+                        </div>
+                        <div>{status_badge}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                        <div><strong>📞 Extension:</strong><br/>{row['Extension']}</div>
+                        <div><strong>🏢 Department:</strong><br/>{row['Department'] if row['Department'] else '-'}</div>
+                        <div><strong>📱 Cell:</strong><br/>{row['Cell Number'] if row['Cell Number'] else '-'}</div>
+                        <div><strong>📍 Location:</strong><br/>{row['Location'] if row['Location'] else '-'}</div>
+                    </div>
+                    {f'<div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e0e0e0; font-size: 0.85rem;"><strong>📝 Notes:</strong> {str(row.get("Notes", ""))}</div>' if str(row.get('Notes', '')).strip() else ''}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Action buttons below card
+                if is_admin():
+                    col_action1, col_action2, col_action3 = st.columns([1, 1, 2])
+                    with col_action1:
+                        if st.button("✏️ Edit", key=f"edit_card_{idx}_{display_idx}", use_container_width=True):
+                            st.session_state.edit_mode = True
+                            st.session_state.edit_id = row['Row ID']
+                            st.session_state.scroll_to_edit = True
+                            st.rerun()
+                    with col_action2:
+                        # Toggle status button
+                        new_status = "Inactive" if row['Status'] == 'Active' else "Active"
+                        status_icon = "⏸️" if row['Status'] == 'Active' else "▶️"
+                        if st.button(f"{status_icon} {new_status}", key=f"toggle_card_{idx}_{display_idx}", use_container_width=True):
+                            st.session_state.df_emp.at[idx, 'Status'] = new_status
+                            st.session_state.df_emp.at[idx, 'Last Updated'] = datetime.utcnow().isoformat()
+                            write_workbook(EXCEL_PATH, st.session_state.df_emp, st.session_state.df_dept, st.session_state.df_users)
+                            st.rerun()
+                else:
+                    st.caption("🔒 Login as admin to edit")
         
-        st.markdown("---")
-        
-        # Data rows in scrollable container
-        for display_idx, (idx, row) in enumerate(df_page.iterrows(), start=start_idx + 1):
-            cols = st.columns([0.4, 0.8, 1.5, 1, 1.2, 0.8, 1.2, 0.8, 1, 0.6])
+        else:
+            # Traditional table view with horizontal scroll
+            st.markdown(f"**📋 Showing {len(df_page)} of {len(df_view)} employee(s) | Page {st.session_state.page_number + 1}/{total_pages}**")
             
-            # Display row data
-            cols[0].write(f"{row.get('Row ID', display_idx)}")  # Show Row ID instead of sequential number
-            emp_id_display = str(row.get('Employee ID', '')).strip()
-            cols[1].write(emp_id_display if emp_id_display and emp_id_display != 'nan' else '-')
-            cols[2].write(row['Name'])
-            cols[3].write(row['Extension'])
-            cols[4].write(row['Department'] if row['Department'] else '-')
-            cols[5].write(row['Cell Number'] if row['Cell Number'] else '-')
-            cols[6].write(row['Location'] if row['Location'] else '-')
+            # Header row with styling
+            st.markdown("""
+            <div style='background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
+                        padding: 10px; 
+                        border-radius: 8px 8px 0 0; 
+                        color: white; 
+                        font-weight: bold;'>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Status badge
-            status_color = "🟢" if row['Status'] == 'Active' else "🔴"
-            cols[7].write(f"{status_color}")
+            # Wrap table in scrollable container
+            st.markdown('<div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">', unsafe_allow_html=True)
             
-            # Notes (truncated)
-            notes_text = str(row.get('Notes', ''))
-            cols[8].write(notes_text[:15] + '...' if len(notes_text) > 15 else notes_text)
+            header_cols = st.columns([0.4, 0.8, 1.5, 1, 1.2, 0.8, 1.2, 0.8, 1, 0.6])
+            headers = ["Row", "Emp ID", "Name", "Extension", "Department", "Cell", "Location", "Status", "Notes", "Action"]
+            for col, header in zip(header_cols, headers):
+                col.markdown(f"**{header}**")
             
-            # Edit button - Admin only
-            if is_admin():
-                if cols[9].button("✏️", key=f"edit_{idx}_{display_idx}", help="Edit this employee"):
-                    st.session_state.edit_mode = True
-                    st.session_state.edit_id = row['Row ID']  # Use Row ID instead of Employee ID
-                    st.session_state.scroll_to_edit = True
-                    st.rerun()
-            else:
-                cols[9].write("🔒")
+            st.markdown("---")
             
-            # Light separator
-            st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+            # Data rows in scrollable container
+            for display_idx, (idx, row) in enumerate(df_page.iterrows(), start=start_idx + 1):
+                cols = st.columns([0.4, 0.8, 1.5, 1, 1.2, 0.8, 1.2, 0.8, 1, 0.6])
+                
+                # Display row data
+                cols[0].write(f"{row.get('Row ID', display_idx)}")
+                emp_id_display = str(row.get('Employee ID', '')).strip()
+                cols[1].write(emp_id_display if emp_id_display and emp_id_display != 'nan' else '-')
+                cols[2].write(row['Name'])
+                cols[3].write(row['Extension'])
+                cols[4].write(row['Department'] if row['Department'] else '-')
+                cols[5].write(row['Cell Number'] if row['Cell Number'] else '-')
+                cols[6].write(row['Location'] if row['Location'] else '-')
+                
+                # Status badge
+                status_color = "🟢" if row['Status'] == 'Active' else "🔴"
+                cols[7].write(f"{status_color}")
+                
+                # Notes (truncated)
+                notes_text = str(row.get('Notes', ''))
+                cols[8].write(notes_text[:15] + '...' if len(notes_text) > 15 else notes_text)
+                
+                # Edit button - Admin only
+                if is_admin():
+                    if cols[9].button("✏️", key=f"edit_{idx}_{display_idx}", help="Edit this employee"):
+                        st.session_state.edit_mode = True
+                        st.session_state.edit_id = row['Row ID']
+                        st.session_state.scroll_to_edit = True
+                        st.rerun()
+                else:
+                    cols[9].write("🔒")
+                
+                # Light separator
+                st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info("No employees found matching the filters.")
 
@@ -730,7 +1328,7 @@ with col1:
             data=generate_excel_filtered(),
             file_name=f"filtered_employees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-            width="stretch",
+            use_container_width=True,
             key="download_excel_filtered"
         )
     with col_dl2:
@@ -739,7 +1337,7 @@ with col1:
             data=df_view.to_csv(index=False).encode('utf-8'), 
             file_name=f"filtered_employees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 
             mime="text/csv", 
-            width="stretch",
+            use_container_width=True,
             key="download_csv_filtered"
         )
     with col_dl3:
@@ -755,7 +1353,7 @@ with col1:
             data=generate_excel_all(),
             file_name=f"all_employees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-            width="stretch",
+            use_container_width=True,
             key="download_excel_all"
         )
 
@@ -837,11 +1435,11 @@ with col1:
                     
                     col_b1, col_b2, col_b3 = st.columns(3)
                     with col_b1:
-                        submitted = st.form_submit_button("💾 Save Changes", width="stretch")
+                        submitted = st.form_submit_button("💾 Save Changes", use_container_width=True)
                     with col_b2:
-                        delete_btn = st.form_submit_button("🗑️ Delete User", width="stretch")
+                        delete_btn = st.form_submit_button("🗑️ Delete User", use_container_width=True)
                     with col_b3:
-                        cancel_btn = st.form_submit_button("❌ Cancel", width="stretch")
+                        cancel_btn = st.form_submit_button("❌ Cancel", use_container_width=True)
 
                     if submitted:
                         if not name.strip():
@@ -1025,7 +1623,7 @@ with col2:
             new_location = st.text_input("Location", placeholder="New York")
             new_status = st.selectbox("Status", options=["Active", "Inactive"], index=0)
             new_notes = st.text_area("Notes", placeholder="Additional information...")
-            submit_new = st.form_submit_button("➕ Add Employee", width="stretch")
+            submit_new = st.form_submit_button("➕ Add Employee", use_container_width=True)
             
             if submit_new:
                 if not require_admin():
@@ -1067,7 +1665,7 @@ with col2:
         with st.form("add_dept_form", clear_on_submit=True):
             dname = st.text_input("Department Name *", placeholder="IT Department")
             ddesc = st.text_area("Description", placeholder="Information Technology Department")
-            add_dept_btn = st.form_submit_button("➕ Add Department", width="stretch")
+            add_dept_btn = st.form_submit_button("➕ Add Department", use_container_width=True)
             if add_dept_btn:
                 if not require_admin():
                     pass
@@ -1166,11 +1764,11 @@ with col2:
                     
                     col_d1, col_d2, col_d3 = st.columns(3)
                     with col_d1:
-                        save_dept = st.form_submit_button("💾 Save", width="stretch")
+                        save_dept = st.form_submit_button("💾 Save", use_container_width=True)
                     with col_d2:
-                        del_dept = st.form_submit_button("🗑️ Delete", width="stretch")
+                        del_dept = st.form_submit_button("🗑️ Delete", use_container_width=True)
                     with col_d3:
-                        cancel_dept = st.form_submit_button("❌ Cancel", width="stretch")
+                        cancel_dept = st.form_submit_button("❌ Cancel", use_container_width=True)
                         
                     if save_dept:
                         if not dn.strip():
@@ -1241,13 +1839,13 @@ if is_admin():
         # Convert to string types for display to avoid Arrow errors
         df_emp_display = df_emp.copy()
         df_emp_display = df_emp_display.astype(str)
-        st.dataframe(df_emp_display, width="stretch")
+        st.dataframe(df_emp_display, use_container_width=True)
 
     with st.expander("🔍 Raw Departments Data (for debugging)"):
         # Convert to string types for display to avoid Arrow errors
         df_dept_display = df_dept.copy()
         df_dept_display = df_dept_display.astype(str)
-        st.dataframe(df_dept_display, width="stretch")
+        st.dataframe(df_dept_display, use_container_width=True)
 
 st.markdown("---")
 
@@ -1637,7 +2235,7 @@ if st.session_state.show_bulk_upload:
                     col_imp1, col_imp2, col_imp3 = st.columns(3)
                     
                     with col_imp1:
-                        if st.button("✅ Import Selected Records", disabled=total_to_import == 0, width="stretch", type="primary", key="bulk_import_btn"):
+                        if st.button("✅ Import Selected Records", disabled=total_to_import == 0, use_container_width=True, type="primary", key="bulk_import_btn"):
                             imported_count = 0
                             replaced_count = 0
                             created_depts = []
@@ -1716,7 +2314,7 @@ if st.session_state.show_bulk_upload:
                             st.rerun()
                     
                     with col_imp2:
-                        if st.button("📋 Download Template", width="stretch"):
+                        if st.button("📋 Download Template", use_container_width=True):
                             template_df = pd.DataFrame(columns=["Employee ID", "Name", "Extension", "Department", "Cell Number", "Location", "Status", "Notes"])
                             template_df.loc[0] = ["EMP001", "John Doe", "1234", "IT", "+1234567890", "New York", "Active", "Sample employee"]
                             st.download_button(
@@ -1727,7 +2325,7 @@ if st.session_state.show_bulk_upload:
                             )
                     
                     with col_imp3:
-                        if st.button("❌ Cancel Import", width="stretch"):
+                        if st.button("❌ Cancel Import", use_container_width=True):
                             st.session_state.show_bulk_upload = False
                             st.session_state.bulk_upload_df = None
                             st.session_state.bulk_mapping = {}
@@ -1951,7 +2549,7 @@ if st.session_state.show_dept_sync:
         col_btn1, col_btn2, col_btn3 = st.columns(3)
         
         with col_btn1:
-            if st.button("✅ Apply Changes", width="stretch", type="primary", key="apply_sync_btn"):
+            if st.button("✅ Apply Changes", use_container_width=True, type="primary", key="apply_sync_btn"):
                 # Check if all departments have valid actions
                 incomplete = []
                 for dept_name in missing_depts:
@@ -2064,7 +2662,7 @@ if st.session_state.show_dept_sync:
                     st.rerun()
         
         with col_btn2:
-            if st.button("🔄 Select All → Create New", width="stretch", help="Quick action: Create all missing departments"):
+            if st.button("🔄 Select All → Create New", use_container_width=True, help="Quick action: Create all missing departments"):
                 for dept_name in missing_depts:
                     st.session_state.sync_dept_actions[dept_name] = {
                         "action": "create",
@@ -2073,7 +2671,7 @@ if st.session_state.show_dept_sync:
                 st.rerun()
         
         with col_btn3:
-            if st.button("❌ Cancel Sync", width="stretch"):
+            if st.button("❌ Cancel Sync", use_container_width=True):
                 st.session_state.show_dept_sync = False
                 st.session_state.sync_dept_actions = {}
                 st.rerun()
@@ -2091,7 +2689,7 @@ if st.session_state.show_dept_sync:
         else:
             st.info("No departments assigned to any employees yet")
         
-        if st.button("🔙 Back to Main View", width="stretch"):
+        if st.button("🔙 Back to Main View", use_container_width=True):
             st.session_state.show_dept_sync = False
             st.rerun()
 
@@ -2286,7 +2884,7 @@ if st.session_state.show_dept_manage:
         col_btn1, col_btn2, col_btn3 = st.columns(3)
         
         with col_btn1:
-            if st.button("✅ Apply Changes", width="stretch", type="primary", key="apply_manage_btn"):
+            if st.button("✅ Apply Changes", use_container_width=True, type="primary", key="apply_manage_btn"):
                 if not st.session_state.dept_manage_actions:
                     st.warning("⚠️ No changes to apply")
                 else:
@@ -2373,7 +2971,7 @@ if st.session_state.show_dept_manage:
                     st.rerun()
         
         with col_btn2:
-            if st.button("❌ Cancel", width="stretch", key="cancel_manage_btn"):
+            if st.button("❌ Cancel", use_container_width=True, key="cancel_manage_btn"):
                 st.session_state.show_dept_manage = False
                 st.session_state.dept_manage_actions = {}
                 st.rerun()
@@ -2384,7 +2982,7 @@ if st.session_state.show_dept_manage:
     
     st.markdown("---")
     
-    if st.button("🔙 Back to Main View", width="stretch"):
+    if st.button("🔙 Back to Main View", use_container_width=True):
         st.session_state.show_dept_manage = False
         st.rerun()
 
@@ -2401,13 +2999,13 @@ with st.expander("📊 Advanced Analytics & Reports"):
             for dept_name in df_dept["Department Name"].unique():
                 count = len(df_emp[df_emp['Department'] == dept_name])
                 dept_stats.append({"Department": dept_name, "Users": count})
-            st.dataframe(pd.DataFrame(dept_stats), hide_index=True, width="stretch")
+            st.dataframe(pd.DataFrame(dept_stats), hide_index=True, use_container_width=True)
     
     with col_a2:
         st.markdown("**📈 Status Distribution**")
         status_counts = df_emp['Status'].value_counts().reset_index()
         status_counts.columns = ['Status', 'Count']
-        st.dataframe(status_counts, hide_index=True, width="stretch")
+        st.dataframe(status_counts, hide_index=True, use_container_width=True)
     
     with col_a3:
         st.markdown("**🔢 Extension Usage**")
@@ -2426,7 +3024,7 @@ if is_admin():
                 # Convert to display-friendly format
                 for col in audit_display.columns:
                     audit_display[col] = audit_display[col].astype(str)
-                st.dataframe(audit_display, hide_index=True, width="stretch")
+                st.dataframe(audit_display, hide_index=True, use_container_width=True)
             else:
                 st.info("No audit trail available yet")
         else:
